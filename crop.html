@@ -1,0 +1,904 @@
+<!doctype html>
+<html lang='en'>
+  <head>
+    <meta charset='utf-8'>
+    <meta http-equiv='X-UA-Compatible' content='IE=edge'>
+    <meta name='viewport' content='width=device-width, initial-scale=1'>
+    <meta name='author' content='Marcio Nunes Ferreira - https://www.linkedin.com/in/analistamarcio' />
+    <title>Crop</title>
+  </head>
+
+<script src='js/jquery.min.js'></script>
+<script type='text/javascript'>
+  // initialize mode:
+  // 0 = rotate mode
+  // 1 = crop mode
+  var mode = 1;
+  // initialize cMode:
+  // 0 = selecting/drawing
+  // 1 = ready to select/draw
+  // 2 = selected
+  // 3 = crop selection move
+  // 4 = crop selection resize
+  var cMode = 1;
+
+  var fRatio = true; // Fixed Ratio
+  var fRatIdx = 1; // Will be changed later with "preview-container" class properties
+  var lL = 0; // limit Left
+  var lR = 0; // limit Right
+  var lT = 0; // limit Top
+  var lB = 0; // limit Bottom
+  var hdl = ""; // handle id
+
+  // Initialize select canvas coordenates
+  var x1 = 0;
+  var y1 = 0;
+  var x2 = 0;
+  var y2 = 0;
+  var w = 0;
+  var h = 0;
+  var iniX = 0;
+  var iniY = 0;
+
+  function CornerSel(){
+    cMode = 4;
+    hdl = event.currentTarget.id.replace("bCanvas","");
+  }
+
+  $(window).load(function() {
+    // hide preview pane if not fixed ratio
+    if (!fRatio) {$('#preview-pane')[0].style.visibility = "hidden"};
+
+    $('.original-container').css("cursor","crosshair");
+    $('#btnSave').prop('disabled', true);
+    var theWindow = $(window),
+    imgOri = $('#imgOriginal'),
+    aspectRatio = imgOri.width() / imgOri.height();
+    fRatIdx = Math.round($('.preview-container').width() / $('.preview-container').height() * 1000) / 1000;
+
+    // Fit image to current height window size
+    if (aspectRatio < 1) {
+        imgOri.addClass('portrait');
+        imgH = theWindow.height();
+        imgW = Math.floor(theWindow.height() * aspectRatio);
+      } else {
+        imgOri.addClass('landscape');
+        imgH = theWindow.height();
+        imgW = Math.floor(theWindow.height() * aspectRatio);
+    };
+    imgOri.width(imgW);
+    imgOri.height(imgH);
+
+    // Set prevCanvas size with preview size info
+    imgPrev = $('.preview-container');
+    $('#prevCanvas').attr('width', imgPrev.width());
+    $('#prevCanvas').attr('height', imgPrev.height());
+    prevCanvas = $('#prevCanvas')[0];
+
+    // Create canvas to draw line (rotate) or square (crop)
+    $('#selCanvas').remove();
+    $('.original-container').append('<canvas ' + 'id=\"selCanvas\" width=\"' + imgW + '\" height=\"' + imgH + '\"></canvas>');
+    selCanvas.style.top = '-1px';
+    selCanvas.style.left = '-1px';
+    selCanvas.style.zIndex = 0;
+    ctx = $('#selCanvas')[0].getContext('2d');
+
+    lL = $('.original-container').position().left;
+    lR = $('.original-container').width() + lL;
+    lT = $('.original-container').position().top;
+    lB = $('.original-container').height() + lT;
+
+    //#################################//
+    //#                               #//
+    //#           mousedown           #//
+    //#                               #//
+    //#################################//
+    $('.original-container').mousedown(function() {
+      if (mode === 1) {
+        // crop mode
+        if (cMode === 1) {
+          event.clientX < 1 ? x1 = lL : event.clientX > lR ? x1 = lR : x1 = event.clientX;
+          event.clientY < 1 ? y1 = lT : event.clientY > lB ? y1 = lB : y1 = event.clientY;
+          cMode = 0;
+          ReinitCoords();
+        } else {
+          // identifies whether clicked off the already selected area (start new selection)
+          //x1 >= x2 ? xt = x2 : xt = x1;
+          //y1 >= y2 ? yt = y2 : yt = y1;
+          if ((event.clientX < x1 || event.clientX > x1 + w || event.clientY < y1 || event.clientY > y1 + h) && cMode != 4) {
+            // start new selection
+            ClearCanvas();
+            event.clientX < 1 ? x1 = lL : event.clientX > lR ? x1 = lR : x1 = event.clientX;
+            event.clientY < 1 ? y1 = lT : event.clientY > lB ? y1 = lB : y1 = event.clientY;
+            cMode = 0;
+            ReinitCoords();
+          } else {
+            // move or resize selection
+            if (cMode != 4) {cMode = 3};
+            iniX = event.clientX;
+            iniY = event.clientY;
+            ShowCoords();
+          }
+        }
+      } else {
+        // rotate mode
+        ClearCanvas();
+        event.clientX < 1 ? x1 = lL : event.clientX > lR ? x1 = lR : x1 = event.clientX;
+        event.clientY < 1 ? y1 = lT : event.clientY > lB ? y1 = lB : y1 = event.clientY;
+        cMode = 0;
+        ReinitCoords();
+        }
+      }
+    );
+
+    //#################################//
+    //#                               #//
+    //#           mousemove           #//
+    //#                               #//
+    //#################################//
+    $(document).mousemove(function() {
+      if (cMode === 0) {
+
+        // hide/show buttons
+        if ((x1 <= 186 + lL && y1 <= 25 + lT) || (x2 <= 186 + lL && y2 <= 25 + lT)) {
+          $('.bButton').hide();
+        } else {
+          $('.bButton').show();
+        }
+
+        SetCoords(event.clientX, event.clientY);
+        w = Math.abs(x2 - x1);
+        h = Math.abs(y2 - y1);
+        ShowCoords();
+
+        if (mode === 1) {// crop mode
+          updateSelection();
+        } else {// rotate mode
+          ClearCanvas();
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(x2, y2);     
+          ctx.stroke();     
+        }
+      } else if (cMode === 2) {
+        if (event.clientX >= x1 && event.clientX <= x2 && event.clientY >= y1 && event.clientY <= y2) {
+              $('.original-container').css("cursor","move");
+            } else {
+              $('.original-container').css("cursor","crosshair");
+            }
+        } else if (cMode === 3) {
+          // move selection
+          $('.bButton').hide(); // hide buttons
+          if (event.clientX >= lL && event.clientX <= lR && event.clientY >= lT && event.clientY <= lB) {
+            (iniX - event.clientX) > 0 ? desL = iniX - event.clientX : desL = 0;
+            (event.clientX - iniX) > 0 ? desR = event.clientX - iniX : desR = 0;
+            (iniY - event.clientY) > 0 ? desU = iniY - event.clientY : desU = 0;
+            (event.clientY - iniY) > 0 ? desD = event.clientY - iniY : desD = 0;
+            MoveSelection(desL, desR, desU, desD);
+          } else {
+            cMode = 2;
+            ShowSelectionCorners();
+          }
+        } else if (cMode === 4) {
+          // resize selection
+          $('.bButton').hide(); // hide buttons
+          if (event.clientX >= lL && event.clientX <= lR && event.clientY >= lT && event.clientY <= lB) {
+            //////////////// resize logic here ////////////////
+            SetCoordsResize();
+            }
+          } else {
+            cMode = 2;
+            ShowSelectionCorners();
+          }
+    });
+
+    //#################################//
+    //#                               #//
+    //#            mouseup            #//
+    //#                               #//
+    //#################################//
+    $('.original-container').mouseup(function() {
+      // Clear selection if selection size less than 3px (w or h)
+      if (w <= 3 || h <= 3) {
+        ClearCanvas();
+        cMode = 1;
+        $('#btnSave').prop('disabled', true);
+      } else {
+        $('.bButton').show();
+        if (mode === 1) {
+          if (cMode === 0 || cMode === 3 || cMode === 4) { // selection, move or resize finished
+            cMode = 2;
+            // enable save button and create corners
+            $('#btnSave').prop('disabled', false);
+            ShowSelectionCorners();
+          }
+        } else {
+          // rotate mode
+          cMode = 2;
+          // rotate();
+        }
+      }
+    });
+
+    $(document).keydown(function(k) {
+      if (cMode === 2) {
+        switch(k.which) {
+          case 37: // left key
+          MoveSelection(1,0,0,0);
+          break;
+
+          case 39: // right key
+          MoveSelection(0,1,0,0);
+          break;
+
+          case 38: // up key
+          MoveSelection(0,0,1,0);
+          break;
+
+          case 40: // down key
+          MoveSelection(0,0,0,1);
+          break;
+
+          default: return;
+        }
+        k.preventDefault();
+      }
+    });
+
+    function SetCoordsResize() {
+      //desL = desR = desU = desD = 0;
+      switch (hdl) {
+        case "NW":
+          if (event.clientX < x2 - 17 && event.clientY < y2 - 17) {
+            nX = x1 - event.clientX; // positive = increase, negative = decrease (width)
+            nY = y1 - event.clientY; // positive = increase, negative = decrease (height)
+            if (fRatio) {
+              // fixed ratio
+              // Quadrant 1 -> adjust x1 and y1
+              y1 = y1 - nY;
+              x1 = x1 - nX;
+              if ((Math.round((x2 - x1) / (y2 - y1) * 1000) / 1000) >= fRatIdx) {
+                (y2 - Math.floor((x2 - x1) / fRatIdx)) >= lT ? y1 = y2 - Math.floor((x2 - x1) / fRatIdx) : (y1 = 0, x1 = Math.floor(x2 - (y2 - y1) * fRatIdx));
+              } else {
+                (x2 - Math.floor((y2 - y1) * fRatIdx)) >= lL ? x1 = x2 - Math.floor((y2 - y1) * fRatIdx) : (x1 = 0, y1 = Math.floor(y2 - (x2 - x1) / fRatIdx));
+              }
+            } else {
+              y1 = y1 - nY;
+              x1 = x1 - nX;
+            }
+              w = x2 - x1;
+              h = y2 - y1;
+          }
+          break;
+
+        case "N":
+        case "T":
+          if (event.clientY < y2 - 17) {
+            nY = y1 - event.clientY; // positive = increase, negative = decrease
+            if (fRatio) {
+              // fixed ratio
+              // ensures that, by increasing the height proportionately, it does not exceed the size of the image.
+              if ((Math.floor((y2 - (y1 - nY)) * fRatIdx) + x1) <= lR) {
+                y1 = y1 - nY;
+                h = y2 - y1;
+                w = Math.floor(h * fRatIdx);
+                x2 = x1 + w;
+              }
+            } else {
+              y1 = y1 - nY;
+              h = y2 - y1;
+            }
+          }
+          break;
+
+        case "NE":
+          if (event.clientX > x1 + 17 && event.clientY < y2 - 17) {
+            nX = event.clientX - x2; // positive = increase, negative = decrease (width)
+            nY = y1 - event.clientY; // positive = increase, negative = decrease (height)
+            if (fRatio) {
+              // fixed ratio
+              // Quadrant 2 -> adjust x2 and y1
+              y1 = y1 - nY;
+              x2 = x2 + nX;
+              if ((Math.round((x2 - x1) / (y2 - y1) * 1000) / 1000) >= fRatIdx) {
+                (y2 - Math.floor((x2 - x1) / fRatIdx)) >= lT ? y1 = y2 - Math.floor((x2 - x1) / fRatIdx) : (y1 = 0, x2 = Math.floor((y2 - y1) * fRatIdx + x1));
+              } else {
+                (Math.floor((y2 - y1) * fRatIdx + x1)) <= lR ? x2 = Math.floor((y2 - y1) * fRatIdx + x1) : (x2 = lR, y1 = Math.floor(y2 - (x2 - x1) / fRatIdx));
+              }
+            } else {
+              y1 = y1 - nY;
+              x2 = x2 + nX;
+            }
+              w = x2 - x1;
+              h = y2 - y1;
+          }
+          break;
+
+        case "E":
+        case "R":
+          if (event.clientX > x1 + 17) {
+            nX = event.clientX - x2; // positive = increase, negative = decrease
+            if (fRatio) {
+              // fixed ratio
+              // ensures that, by increasing the height proportionately, it does not exceed the size of the image.
+              if ((Math.floor((x2 + nX - x1) / fRatIdx) + y1) <= lB) {
+                x2 = x2 + nX;
+                w = x2 - x1;
+                h = Math.floor(w / fRatIdx);
+                y2 = y1 + h;
+              }
+            } else {
+              x2 = x2 + nX;
+              w = x2 - x1;
+            }
+          }
+          break;
+
+        case "SE":
+          if (event.clientX > x1 + 17 && event.clientY > y1 + 17) {
+            nX = event.clientX - x2; // positive = increase, negative = decrease (width)
+            nY = event.clientY - y2; // positive = increase, negative = decrease (height)
+            if (fRatio) {
+              // fixed ratio
+              // Quadrant 3 -> adjust x2 and y2
+              y2 = y2 + nY;
+              x2 = x2 + nX;
+              if ((Math.round((x2 - x1) / (y2 - y1) * 1000) / 1000) >= fRatIdx) {
+                (Math.floor((x2 - x1) / fRatIdx + y1)) <= lB ? y2 = Math.floor((x2 - x1) / fRatIdx + y1) : (y2 = lB, x2 = Math.floor((y2 - y1) * fRatIdx + x1));
+              } else {
+                (Math.floor((y2 - y1) * fRatIdx + x1)) <= lR ? x2 = Math.floor((y2 - y1) * fRatIdx + x1) : (x2 = lR, y2 = Math.floor((x2 - x1) / fRatIdx) + y1);
+              }
+            } else {
+              y2 = y2 + nY;
+              x2 = x2 + nX;
+            }
+              w = x2 - x1;
+              h = y2 - y1;
+          }
+          break;
+
+        case "S":
+        case "B":
+          if (event.clientY > y1 + 17) {
+            nY = event.clientY - y2; // positive = increase, negative = decrease
+            if (fRatio) {
+              // fixed ratio
+              // ensures that, by increasing the height proportionately, it does not exceed the size of the image.
+              if ((Math.floor((y2 - (y1 - nY)) * fRatIdx) + x1) <= lR) {
+                y2 = y2 + nY;
+                h = y2 - y1;
+                w = Math.floor(h * fRatIdx);
+                x2 = x1 + w;
+              }
+            } else {
+              y2 = y2 + nY;
+              h = y2 - y1;
+            }
+          }
+          break;
+
+        case "SW":
+          if (event.clientX < x2 - 17 && event.clientY > y1 + 17) {
+            nX = x1 - event.clientX; // positive = increase, negative = decrease (width)
+            nY = event.clientY - y2; // positive = increase, negative = decrease (height)
+            if (fRatio) {
+              // fixed ratio
+              // Quadrant 4 -> adjust x1 and y2
+              y2 = y2 + nY;
+              x1 = x1 - nX;
+              if ((Math.round((x2 - x1) / (y2 - y1) * 1000) / 1000) >= fRatIdx) {
+                (Math.floor((x2 - x1) / fRatIdx + y1)) <= lB ? y2 = Math.floor((x2 - x1) / fRatIdx + y1) : (y2 = lB, x1 = Math.floor(x2 - (y2 - y1) * fRatIdx));
+              } else {
+                (x2 - Math.floor((y2 - y1) * fRatIdx) >= lL) ? x1 = x2 - Math.floor((y2 - y1) * fRatIdx) : (x1 = 0, y2 = Math.floor((x2 - x1) / fRatIdx) + y1);
+              }
+            } else {
+              y2 = y2 + nY;
+              x1 = x1 - nX;
+            }
+              w = x2 - x1;
+              h = y2 - y1;
+          }
+          break;
+
+        case "W":
+        case "L":
+          if (event.clientX < x2 - 17) {
+            nX = x1 - event.clientX; // positive = increase, negative = decrease
+            if (fRatio) {
+              // fixed ratio
+              // ensures that, by increasing the height proportionately, it does not exceed the size of the image.
+              if ((Math.floor((x2 - (x1 - nX)) / fRatIdx) + y1) <= lB) {
+                x1 = x1 - nX;
+                w = x2 - x1;
+                h = Math.floor(w / fRatIdx);
+                y2 = y1 + h;
+              }
+            } else {
+              x1 = x1 - nX;
+              w = x2 - x1;
+            }
+          }
+          break;
+        }
+          ShowSelectionCorners();
+          updateSelection();
+          ShowCoords();
+    }
+
+    function updateSelection() {
+      DarkenCanvas();
+      //ctx.strokeRect(x1, y1, w, h); // selection border (not necessary if use the UpdateSelectionBorders() function)
+      ctx.clearRect(x1, y1, w, h); // rectangle selection
+
+      // Before update preview image crop, adjust x,y,w,h to be used as the original image size.
+      factor = imgOri[0].naturalHeight / imgOri[0].height;
+      var context = prevCanvas.getContext('2d');
+      context.clearRect(0, 0, imgPrev.width(), imgPrev.height());
+      context.drawImage(imgOri[0], Math.floor(factor * x1), Math.floor(y1 * factor), Math.floor(w * factor), Math.floor(h * factor), 0, 0, imgPrev.width(), imgPrev.height());
+
+      // create border selection to be used on resize function
+      UpdateSelectionBorders();
+    }
+
+    function UpdateSelectionBorders() {
+      $('#bCanvasT').remove();
+      $('.original-container').append('<canvas ' + 'id=\"bCanvasT\" class="bCanvas" width=\"' + w + '\" height=\"' + 1 + '\" onmousedown=\"CornerSel()\" style=\"cursor: ns-resize\"></canvas>');
+      bCanvasT.style.top = y1 + 'px';
+      bCanvasT.style.left = x1 + 'px';
+      bCanvasT.style.zIndex = 1;
+      $('#bCanvasR').remove();
+      $('.original-container').append('<canvas ' + 'id=\"bCanvasR\" class="bCanvas" width=\"' + 1 + '\" height=\"' + h + '\" onmousedown=\"CornerSel()\" style=\"cursor: ew-resize\"></canvas>');
+      bCanvasR.style.top = y1 + 'px';
+      bCanvasR.style.left = x2 + 'px';
+      bCanvasR.style.zIndex = 2;
+      $('#bCanvasB').remove();
+      $('.original-container').append('<canvas ' + 'id=\"bCanvasB\" class="bCanvas" width=\"' + w + '\" height=\"' + 1 + '\" onmousedown=\"CornerSel()\" style=\"cursor: ns-resize\"></canvas>');
+      bCanvasB.style.top = y2 + 'px';
+      bCanvasB.style.left = x1 + 'px';
+      bCanvasB.style.zIndex = 3;
+      $('#bCanvasL').remove();
+      $('.original-container').append('<canvas ' + 'id=\"bCanvasL\" class="bCanvas" width=\"' + 1 + '\" height=\"' + h + '\" onmousedown=\"CornerSel()\" style=\"cursor: ew-resize\"></canvas>');
+      bCanvasL.style.top = y1 + 'px';
+      bCanvasL.style.left = x1 + 'px';
+      bCanvasL.style.zIndex = 4;
+    }
+
+    function ShowSelectionCorners() {
+      // 'n','s','e','w','nw','ne','se','sw'
+      if (w > 17 && h > 17) {
+        $('#bCanvasNW').remove();
+        $('.original-container').append('<canvas ' + 'id=\"bCanvasNW\" class="bCanvasCorner" width=\"' + 8 + '\" height=\"' + 8 + '\" onmousedown=\"CornerSel()\" style=\"cursor: nwse-resize\"></canvas>');
+        bCanvasNW.style.top = (y1 - 4) + 'px';
+        bCanvasNW.style.left = (x1 - 4) + 'px';
+        bCanvasNW.style.zIndex = 5;
+
+        $('#bCanvasN').remove();
+        $('.original-container').append('<canvas ' + 'id=\"bCanvasN\" class="bCanvasCorner" width=\"' + 8 + '\" height=\"' + 8 + '\" onmousedown=\"CornerSel()\" style=\"cursor: ns-resize\"></canvas>');
+        bCanvasN.style.top = (y1 - 4) + 'px';
+        bCanvasN.style.left = Math.floor(x1 + (w / 2) - 4) + 'px';
+        bCanvasN.style.zIndex = 6;
+
+        $('#bCanvasNE').remove();
+        $('.original-container').append('<canvas ' + 'id=\"bCanvasNE\" class="bCanvasCorner" width=\"' + 8 + '\" height=\"' + 8 + '\" onmousedown=\"CornerSel()\" style=\"cursor: nesw-resize\"></canvas>');
+        bCanvasNE.style.top = (y1 - 4) + 'px';
+        bCanvasNE.style.left = (x2 - 4) + 'px';
+        bCanvasNE.style.zIndex = 7;
+
+        $('#bCanvasE').remove();
+        $('.original-container').append('<canvas ' + 'id=\"bCanvasE\" class="bCanvasCorner" width=\"' + 8 + '\" height=\"' + 8 + '\" onmousedown=\"CornerSel()\" style=\"cursor: ew-resize\"></canvas>');
+        bCanvasE.style.top = (y1 + Math.floor(h / 2) - 4) + 'px';
+        bCanvasE.style.left = (x2 - 4) + 'px';
+        bCanvasE.style.zIndex = 8;
+
+        $('#bCanvasSE').remove();
+        $('.original-container').append('<canvas ' + 'id=\"bCanvasSE\" class="bCanvasCorner" width=\"' + 8 + '\" height=\"' + 8 + '\" onmousedown=\"CornerSel()\" style=\"cursor: nwse-resize\"></canvas>');
+        bCanvasSE.style.top = (y2 - 4) + 'px';
+        bCanvasSE.style.left = (x2 - 4) + 'px';
+        bCanvasSE.style.zIndex = 9;
+
+        $('#bCanvasS').remove();
+        $('.original-container').append('<canvas ' + 'id=\"bCanvasS\" class="bCanvasCorner" width=\"' + 8 + '\" height=\"' + 8 + '\" onmousedown=\"CornerSel()\" style=\"cursor: ns-resize\"></canvas>');
+        bCanvasS.style.top = (y2 - 4) + 'px';
+        bCanvasS.style.left = Math.floor(x1 + (w / 2) - 4) + 'px';
+        bCanvasS.style.zIndex = 10;
+
+        $('#bCanvasSW').remove();
+        $('.original-container').append('<canvas ' + 'id=\"bCanvasSW\" class="bCanvasCorner" width=\"' + 8 + '\" height=\"' + 8 + '\" onmousedown=\"CornerSel()\" style=\"cursor: nesw-resize\"></canvas>');
+        bCanvasSW.style.top = (y2 - 4) + 'px';
+        bCanvasSW.style.left = (x1 - 4) + 'px';
+        bCanvasSW.style.zIndex = 11;
+
+        $('#bCanvasW').remove();
+        $('.original-container').append('<canvas ' + 'id=\"bCanvasW\" class="bCanvasCorner" width=\"' + 8 + '\" height=\"' + 8 + '\" onmousedown=\"CornerSel()\" style=\"cursor: ew-resize\"></canvas>');
+        bCanvasW.style.top = (y1 + Math.floor(h / 2) - 4) + 'px';
+        bCanvasW.style.left = (x1 - 4) + 'px';
+        bCanvasW.style.zIndex = 912;
+      }
+    }
+
+    function MoveSelection(mvL, mvR, mvU, mvD) {
+      mvL = Math.abs(mvL) || 0;
+      mvR = Math.abs(mvR) || 0;
+      mvU = Math.abs(mvU) || 0;
+      mvD = Math.abs(mvD) || 0;
+
+      if (mvL > 0) { // left
+        if ((x1 - mvL) >= lL) {
+          x1 = x1 - mvL;
+          x2 = x2 - mvL;
+        } else { // move to left border
+          tmp = x2 - x1;
+          x1 = lL;
+          x2 = x1 + tmp;
+        }
+      }
+
+      if (mvR > 0) { // right
+        if ((x2 + mvR) <= lR) {
+          x1 = x1 + mvR;
+          x2 = x2 + mvR;
+        } else { // move to right border
+          tmp = x2 - x1;
+          x2 = lR;
+          x1 = x2 - tmp;
+        }
+      }
+
+      if (mvU > 0) { // up
+        if ((y1 - mvU) >= lT) {
+          y1 = y1 - mvU;
+          y2 = y2 - mvU;
+        } else { // move to up border
+          tmp = y2 - y1;
+          y1 = lT;
+          y2 = y1 + tmp;
+        }
+      }
+
+      if (mvD > 0) { // dowm
+        if ((y2 + mvD) <= lB) {
+          y1 = y1 + mvD;
+          y2 = y2 + mvD;
+        } else {
+          tmp = y2 - y1;
+          y2 = lB;
+          y1 = y2 - tmp;
+        }
+      }
+
+      iniX = event.clientX;
+      iniY = event.clientY;
+      updateSelection();
+      ShowCoords();
+      UpdateSelectionBorders();
+      ShowSelectionCorners();
+    }
+
+    function ReinitCoords() {
+      // reinitialize select canvas coordenates
+      x2 = x1;
+      y2 = y1;
+      iniX = x1;
+      iniY = y1;
+      w = Math.abs(x2 - x1);
+      h = Math.abs(y2 - y1);
+      ShowCoords();
+    };
+
+    function SetCoords(posX,posY) {
+      // adjust posX and posY if mouse position is less or greater than image limits
+      posX < 1 ? posX = lL : posX > lR ? posX = lR : posX;
+      posY < 1 ? posY = lT : posY > lB ? posY = lB : posY;
+
+      if (mode === 0) { // rotate mode
+        x2 = posX;
+        y2 = posY;
+      } else { // crop mode
+        posX >= iniX ? (x1 = iniX, x2 = posX) : (x1 = posX, x2 = iniX);
+        posY >= iniY ? (y1 = iniY, y2 = posY) : (y1 = posY, y2 = iniY);
+        if (fRatio) {
+          //
+          // Fixed Ratio enabled
+          // Coordinates x1, y1, x2 and/or y2 will be adjusted
+          //
+          // Quadrant 1 = when the selection is from right to left and bottom to up
+          // Quadrant 2 = when the selection is from left to right and bottom to up
+          // Quadrant 3 = when the selection is from left to right and up to bottom
+          // Quadrant 4 = when the selection is from right to left and up to bottom
+          // 
+          //         ↑
+          //         |
+          //      Q1 | Q2
+          //   <-----|-----> (0,0 on this graphic is equivalent to mousedown started selection)
+          //      Q4 | Q3
+          //         |
+          //         ↓
+          //
+          // Then...
+          // 1) Identify the Quadrant (Q1, Q2, Q3 or Q4)
+          // 2) Verify if current selection has a portrait or landscape format
+          // 3) Check if selection do not exceed the image limits
+          // 4) Finally, set one or two coordinates
+          //   * If selection exceed the image limits, two coordnates will be adjusted
+          //
+          if (x1 <= iniX && y1 <= iniY && x2 == iniX && y2 == iniY) {
+            // Quadrant 1 -> adjust x1 and y1
+            if ((Math.round((x2 - x1) / (y2 - y1) * 1000) / 1000) >= fRatIdx) {
+              (y2 - Math.floor((x2 - x1) / fRatIdx)) >= lT ? y1 = y2 - Math.floor((x2 - x1) / fRatIdx) : (y1 = 0, x1 = Math.floor(x2 - (y2 - y1) * fRatIdx));
+            } else {
+              (x2 - Math.floor((y2 - y1) * fRatIdx)) >= lL ? x1 = x2 - Math.floor((y2 - y1) * fRatIdx) : (x1 = 0, y1 = Math.floor(y2 - (x2 - x1) / fRatIdx));
+            }
+          } else if (x1 == iniX && y1 <= iniY && x2 >= iniX && y2 == iniY) {
+            // Quadrant 2 -> adjust x2 and y1
+            if ((Math.round((x2 - x1) / (y2 - y1) * 1000) / 1000) >= fRatIdx) {
+              (y2 - Math.floor((x2 - x1) / fRatIdx)) >= lT ? y1 = y2 - Math.floor((x2 - x1) / fRatIdx) : (y1 = 0, x2 = Math.floor((y2 - y1) * fRatIdx + x1));
+            } else {
+              (Math.floor((y2 - y1) * fRatIdx + x1)) <= lR ? x2 = Math.floor((y2 - y1) * fRatIdx + x1) : (x2 = lR, y1 = Math.floor(y2 - (x2 - x1) / fRatIdx));
+            }
+          } else if (x1 == iniX && y1 == iniY && x2 >= iniX && y2 >= iniY) {
+            // Quadrant 3 -> adjust x2 and y2
+            if ((Math.round((x2 - x1) / (y2 - y1) * 1000) / 1000) >= fRatIdx) {
+              (Math.floor((x2 - x1) / fRatIdx + y1)) <= lB ? y2 = Math.floor((x2 - x1) / fRatIdx + y1) : (y2 = lB, x2 = Math.floor((y2 - y1) * fRatIdx + x1));
+            } else {
+              (Math.floor((y2 - y1) * fRatIdx + x1)) <= lR ? x2 = Math.floor((y2 - y1) * fRatIdx + x1) : (x2 = lR, y2 = Math.floor((x2 - x1) / fRatIdx) + y1);
+            }
+          } else if (x1 <= iniX && y1 == iniY && x2 == iniX && y2 >= iniY) {
+            // Quadrant 4 -> adjust x1 and y2
+            if ((Math.round((x2 - x1) / (y2 - y1) * 1000) / 1000) >= fRatIdx) {
+              (Math.floor((x2 - x1) / fRatIdx + y1)) <= lB ? y2 = Math.floor((x2 - x1) / fRatIdx + y1) : (y2 = lB, x1 = Math.floor(x2 - (y2 - y1) * fRatIdx));
+            } else {
+              (x2 - Math.floor((y2 - y1) * fRatIdx) >= lL) ? x1 = x2 - Math.floor((y2 - y1) * fRatIdx) : (x1 = 0, y2 = Math.floor((x2 - x1) / fRatIdx) + y1);
+            }
+          }
+        } // Fixed Ratio disabled
+      }
+    };
+
+    function DarkenCanvas() {
+      ctx.fillStyle = "rgba(0, 0, 0, 0.6)"; // not selected area color
+      ctx.clearRect(0, 0, imgOri.width(), imgOri.height());
+      ctx.fillRect(0, 0, imgOri.width(), imgOri.height());
+    };
+
+    function ClearCanvas() {
+      ctx.beginPath();
+      ctx.fillStyle = "white";
+      ctx.clearRect(0, 0, imgOri.width(), imgOri.height());
+      $('.original-container').css("cursor","crosshair");
+      $('.bCanvas').remove();
+      $('.bCanvasCorner').remove();
+    };
+
+    function ShowCoords() {
+      $('#x').val(event.clientX);
+      $('#y').val(event.clientY);
+      $('#iniX').val(iniX);
+      $('#iniY').val(iniY);
+      $('#x1').val(x1);
+      $('#y1').val(y1);
+      $('#x2').val(x2);
+      $('#y2').val(y2);
+      $('#w').val(w);
+      $('#h').val(h);
+    };
+
+    $('#btnMode').click(function(e) {
+      if (cMode > 0) {
+        if (mode === 1) {
+          $('#btnSave').text('Rotate');
+          mode = 0;
+          cMode = 1;
+          ClearCanvas();
+        } else {
+          $('#btnSave').text('Crop');
+          mode = 1;
+          cMode = 1;
+          ClearCanvas();
+        }
+        $('#btnSave').prop('disabled', true);
+        x1 = 0;
+        y1 = 0;
+        x2 = 0;
+        y2 = 0;
+        w = 0;
+        h = 0;
+        iniX = 0;
+        iniY = 0;
+        ShowCoords();
+      }
+    });
+
+  	$('#btnSave').click(function(e) {
+      /*
+      var img = $('#imgOriginal');
+      var context = prevCanvas.getContext('2d');
+      context.drawImage(img[0], x1, y1, w1, h1, 0, 0, xsize, ysize);
+      //var newImg = "<img src='" + prevCanvas.toDataURL() + "' />";
+      var dataURL = prevCanvas.toDataURL();
+      document.getElementById('imgOriginal').src = dataURL;
+      var myWindow = window.open('', '_blank');
+      myWindow.document.write("<img src='" + document.getElementById('imgOriginal').src + "' />");
+      */
+  	});
+
+});
+
+</script>
+
+<!--<link rel='stylesheet' href='css/demos.css' type='text/css' />-->
+<!--<link rel='stylesheet' href='css/main.css' type='text/css' />-->
+<!--<link rel='stylesheet' href='css/jquery.Jcrop.css' type='text/css' />-->
+
+<style type='text/css'>
+
+.stage {
+  position: absolute;
+  display: block;
+  top: 0;
+  left: 0;
+  height: 100%;
+  min-height: 100%;
+}
+
+.left-box {
+  display: block;
+}
+
+.original-container img {
+  display: block;
+  width: 100%;
+}
+
+.right-box {
+  display: block;
+  position: absolute;
+  width: 480px !important;
+  height: 385px;
+  top: 0px;
+  right: -480px;
+  padding: 0;
+  background-image: url('images/bg-card.png');
+  background-size: 480px 385px;
+  background-repeat: no-repeat;
+  background-color: white;
+
+  -webkit-border-radius: 0;
+  -moz-border-radius: 0;
+  border-radius: 0;
+
+  -webkit-box-shadow: 1px 1px 2px 2px rgba(0, 0, 0, 0.2);
+  -moz-box-shadow: 1px 1px 2px 2px rgba(0, 0, 0, 0.2);
+  box-shadow: 1px 1px 2px 2px rgba(0, 0, 0, 0.2);
+}
+
+.preview-container {
+  /* width vs height => aspectRatio */
+  width: 188px;
+  height: 240px;
+  overflow: hidden;
+  position: absolute;
+  /* width vs height => margins of the preview image on the preview-pane (based on background image) */
+  top: 108px;
+  left: 54px;
+  border: 3px rgba(126,157,211,1) solid;
+}
+
+canvas {
+  position: absolute;
+  overflow: hidden;
+  display: block;
+}
+
+.bCanvas {
+  position: absolute;
+  background:#fff url(data:image/gif;base64,R0lGODlhCAAIAPABAAAAAKqqqiH/C05FVFNDQVBFMi4wAwEAAAAh+QQJCgABACwAAAAACAAIAEACDYQRqXm3xlyQ8cF4myoAIfkECQoAAQAsAAAAAAgACAAAAg8MDqGYaudeW9ChyOyltQAAIfkECQoAAQAsAAAAAAgACAAAAg9MgGCXm+rQYtC0WGl9oQAAIfkECQoAAQAsAAAAAAgACAAAAg+MgWCRernaYmjCWLF7qAAAIfkECQoAAQAsAAAAAAgACAAAAg2MAwmna81UTAfRWeUsACH5BAkKAAEALAAAAAAIAAgAAAIPRB6gmGrnXlvQocjspbUAACH5BAkKAAEALAAAAAAIAAgAAAIPBIJhl5vq0GLQtFhpfaAAACH5BAUKAAEALAAAAAAIAAgAAAIPhINhkHq52mJowlixe6gAADs=);
+  font-size: 0;
+}
+
+.bCanvasCorner {
+  border: 1px #eeeeee solid;
+  background-color: rgba(0,0,0,.4);
+}
+
+.bButton {
+  border-radius: 6px;
+  cursor: pointer;
+  position: absolute;
+  font: 12px/1em verdana, sans-serif;
+  color: #000;
+  text-align: center;
+  font-weight: 600;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  z-index: 630;
+}
+
+#btnMode {
+  background-color: rgba(192, 192, 192, .5);
+  top: 2px;
+  left: 2px;
+  width: 90px;
+  height: 22px;
+}
+
+#btnMode:hover {
+  background-color: rgba(192, 192, 192, .2);
+}
+
+#btnMode:active {
+  background-color: rgba(218, 218, 218, 1);
+}
+
+#btnSave {
+  background-color: rgba(50, 150, 250, .6);
+  top: 2px;
+  left: 95px;
+  width: 90px;
+  height: 22px;
+}
+
+#btnSave:hover {
+  background-color: rgba(30, 90, 200, .6);
+}
+
+#btnSave:active {
+  background-color: rgba(50, 180, 150, 1);
+}
+
+#coords {
+  /*visibility: hidden;  *** uncomment to hide coordenates ***/
+  opacity: .5;
+  position: absolute;
+  left: 10px;
+  bottom: -45px;
+}
+
+/* Hide preview pane on Small Devices (tablets and cellphones) */
+@media (min-width: 768px) and (max-width: 991px) {
+  .hide_sd {
+    visibility: hidden;
+  }
+}
+
+@media (max-width: 767px) {
+  .hide_sd {
+    visibility: hidden;
+  }
+}
+
+</style>
+
+<body>
+
+<div class='stage'>
+  <button id='btnMode' class='bButton'>Mode</button>
+	<button id='btnSave' class='bButton'>Crop</button>
+
+  <div class='left-box' id='original-pane'>
+    <div class='original-container'>
+      <img mark1='start' src='data:image/jpeg;base64,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' mark2='end' id='imgOriginal' alt='Original image' />
+    </div><!-- original-container -->
+  </div><!-- left-box -->
+
+  <div class='right-box hide_sd' id='preview-pane'>
+    <div class='preview-container'>
+      <canvas id='prevCanvas'></canvas>
+    </div>
+    <form id='coords'>
+      <label>Mouse X <input id='x' name='x' size='5' readonly='readonly' /></label>
+      <label>Mouse Y <input id='y' name='y' size='5' readonly='readonly' /></label>
+      <label>mDown X <input id='iniX' name='iniX' size='5' readonly='readonly' /></label>
+      <label>mDown Y <input id='iniY' name='iniY' size='5' readonly='readonly' /></label><br />
+      <label>X1 <input id='x1' name='x1' size='5' readonly='readonly' /></label>
+      <label>Y1 <input id='y1' name='y1' size='5' readonly='readonly' /></label>
+      <label>X2 <input id='x2' name='x2' size='5' readonly='readonly' /></label>
+      <label>Y2 <input id='y2' name='y2' size='5' readonly='readonly' /></label>
+      <label> W <input id='w' name='w' size='5' readonly='readonly' /></label>
+      <label> H <input id='h' name='h' size='5' readonly='readonly' /></label>
+    </form>
+  </div><!-- right-box -->
+
+</div><!-- stage -->
+
+</body>
+</html>
