@@ -707,7 +707,13 @@
       }
     });
 
-  	$('#btnSave').click(function(e) {
+    $('#btnSave').click(function(e) {
+      ctx.clearRect(0, 0, imgW, imgH);
+      ctx.save();
+      ctx.translate(x1, y1);
+      ctx.rotate(-15 * Math.PI/180);
+      ctx.drawImage(imgOriginal, -Math.floor(imgW/2), -Math.floor(imgH/2));
+      ctx.restore();
       /*
       var img = $('#imgOriginal');
       var context = prevCanvas.getContext('2d');
@@ -718,7 +724,7 @@
       var myWindow = window.open('', '_blank');
       myWindow.document.write("<img src='" + document.getElementById('imgOriginal').src + "' />");
       */
-  	});
+    });
 
 });
 
@@ -872,7 +878,7 @@ canvas {
 
 <div class='stage'>
   <button id='btnMode' class='bButton'>Mode</button>
-	<button id='btnSave' class='bButton'>Crop</button>
+  <button id='btnSave' class='bButton'>Crop</button>
 
   <div class='left-box' id='original-pane'>
     <div class='original-container'>
